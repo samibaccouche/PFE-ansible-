@@ -1,0 +1,9 @@
+#SPDX-License-Identifier: MIT-0
+---
+apache_sites:
+  - name: "cms"
+    server_name: "web-node.local"
+    document_root: "/var/www/cms"
+
+
+# defaults file for roles/apache

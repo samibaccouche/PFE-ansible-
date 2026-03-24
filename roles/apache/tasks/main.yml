@@ -1,0 +1,73 @@
+#SPDX-License-Identifier: MIT-0
+---
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Install Apache and PHP modules
+  apt:
+    name:
+      - apache2
+      - libapache2-mod-php
+      - python3-cryptography
+    state: present
+
+- name: Create the document root directory
+  file:
+    path: "{{ item.document_root }}"
+    state: directory
+    owner: www-data
+    group: www-data
+    mode: '0755'
+  loop: "{{ apache_sites }}"
+
+- name: Activer le module SSL d'Apache
+  command: a2enmod ssl
+  notify: Restart Apache
+
+- name:  Générer la clé privée RSA pour chaque site (Détention du secret)
+  community.crypto.openssl_privatekey:
+    path: "/etc/ssl/private/{{ item.name }}.key"
+    type: RSA
+    size: 2048
+    owner: root
+    group: root
+    mode: '0600' # Seul root peut lire la clé (Hardening)
+  loop: "{{ apache_sites }}"
+
+- name:  Générer le certificat auto-signé (Validation de l'identité locale)
+  community.crypto.x509_certificate:
+    path: "/etc/ssl/certs/{{ item.name }}-selfsigned.crt"
+    privatekey_path: "/etc/ssl/private/{{ item.name }}.key"
+    provider: selfsigned
+    selfsigned_not_after: "+365d" # Valable 1 an
+  loop: "{{ apache_sites }}"
+  notify: Restart Apache
+
+- name: Enable rewrite module
+  command: a2enmod rewrite
+  notify: Restart Apache
+
+- name: Deploy VirtualHost configuration
+  template:
+    src: vhost.conf.j2
+    dest: "/etc/apache2/sites-available/{{ item.name }}.conf"
+  loop: "{{ apache_sites }}"
+  notify: Restart Apache
+
+- name: Enable CMS site
+  command: "a2ensite {{ item.name }}.conf"
+  loop: "{{ apache_sites }}"
+  notify: Restart Apache
+
+- name: Disable default site
+  command: a2dissite 000-default.conf
+  notify: Restart Apache
+
+- name: Ensure Apache is running
+  service:
+    name: apache2
+    state: started
+    enabled: yes
+# tasks file for roles/apache

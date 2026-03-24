@@ -1,0 +1,90 @@
+---
+- name: Installer les dépendances (ACL et Driver Python)
+  apt:
+    name: ['acl', 'postgresql', 'python3-psycopg2']
+    state: present
+    update_cache: yes
+
+- name: Détecter la version de PostgreSQL
+  shell: ls /etc/postgresql/ | head -n 1
+  register: pg_version_installed
+  changed_when: false
+
+- name: Configurer l'écoute sur toutes les interfaces
+  lineinfile:
+    path: "/etc/postgresql/{{ pg_version_installed.stdout }}/main/postgresql.conf"
+    regexp: "^#?listen_addresses ="
+    line: "listen_addresses = '*'"
+  notify: restart postgresql
+
+- name: 1. Créer les Rôles de Groupe (NOLOGIN)
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_user:
+    name: "{{ item }}"
+    role_attr_flags: "NOLOGIN"
+  loop:
+    - "db_analyst"
+    - "db_developer"
+
+- name: 2. Créer les bases de données (Boucle Applications)
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_db:
+    name: "{{ item.name }}"
+    owner: "postgres"
+  loop: "{{ applications }}"
+
+- name: 3. Créer les comptes utilisateurs (LOGIN)
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_user:
+    name: "{{ item.user }}"
+    password: "{{ item.pass }}"
+    role_attr_flags: "LOGIN"
+  loop:
+    - { user: "{{ analyst_user }}", pass: "{{ analyst_password }}" }
+    - { user: "{{ developer_user }}", pass: "{{ developer_password }}" }
+    - { user: "{{ applications[0].user }}", pass: "{{ applications[0].pass }}" }
+
+- name: 4. Lier les utilisateurs aux groupes de sécurité (Membership)
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_membership:
+    group: "{{ item.group }}"
+    target_role: "{{ item.user }}"
+    state: present
+  loop:
+    - { user: "{{ analyst_user }}", group: "db_analyst" }
+    - { user: "{{ developer_user }}", group: "db_developer" }
+    - { user: "{{ applications[0].user }}", group: "db_developer" }
+
+
+- name: 4. Autoriser l'accès distant dans pg_hba.conf
+  community.postgresql.postgresql_pg_hba:
+    dest: "/etc/postgresql/{{ pg_version_installed.stdout }}/main/pg_hba.conf"
+    contype: host
+    databases: "{{ item.0.name }}"
+    users: "{{ item.1 }}"
+    address: "{{ app_server_ip }}/32"
+    method: md5
+  loop: "{{ applications | product([applications[0].user, analyst_user, developer_user]) | list }}"
+  notify: restart postgresql
+
+- name: 5. Déployer les schémas SQL (Tables et Droits internes)
+  block:
+    - name: Copier les scripts SQL sur la VM2
+      ansible.builtin.copy:
+        src: "{{ item.schema_file }}"
+        dest: "/tmp/{{ item.schema_file }}"
+        owner: postgres
+        group: postgres
+        mode: '0644'
+      loop: "{{ applications }}"
+
+    - name: Exécuter les scripts SQL dans chaque base
+      shell: "psql -d {{ item.name }} -f /tmp/{{ item.schema_file }}"
+      become: yes
+      become_user: postgres
+      loop: "{{ applications }}"
+  notify: restart postgresql

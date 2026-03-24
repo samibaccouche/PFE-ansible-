@@ -1,0 +1,24 @@
+#SPDX-License-Identifier: MIT-0
+---
+
+# Database configuration
+
+# Application server IP
+app_server_ip: "192.168.56.10"
+
+# Users
+analyst_user: analyst
+analyst_password: "analyst123"
+
+developer_user: developer
+developer_password: "dev123"
+
+# PostgreSQL (valeurs par défaut, seront écrasées par la détection)
+
+app_schema: app_schema
+# defaults file for postgresql
+applications:
+  - name: "cms_db"
+    user: "cms_user"
+    pass: "azerty"
+    schema_file: "cms_schema.sql"

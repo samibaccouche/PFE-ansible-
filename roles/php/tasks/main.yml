@@ -1,0 +1,19 @@
+#SPDX-License-Identifier: MIT-0
+---
+
+- name: Installer PHP et les extensions communes
+  apt:
+    name:
+      - php
+      - php-cli
+      - libapache2-mod-php
+      - php-common
+      - php-mbstring
+      - php-xml
+      - php-pgsql
+      - php-curl
+      - php-gd
+    state: present
+  notify: Restart Apache
+
+# tasks file for php

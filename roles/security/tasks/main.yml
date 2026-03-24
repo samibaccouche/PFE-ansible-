@@ -1,0 +1,38 @@
+---
+# roles/security/tasks/main.yml
+
+- name: Installer UFW (Uncomplicated Firewall)
+  apt:
+    name: ufw
+    state: present
+
+- name: Réinitialiser UFW et bloquer tout par défaut (Deny All)
+  community.general.ufw:
+    state: reset
+
+- name: Autoriser SSH (Indispensable pour garder la main)
+  community.general.ufw:
+    rule: allow
+    name: OpenSSH
+
+- name: Autoriser le trafic Web (HTTP & HTTPS)
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop:
+    - '80'
+    - '443'
+
+- name: Autoriser PostgreSQL uniquement pour la VM1 (Jenkins/Control-Plane)
+  community.general.ufw:
+    rule: allow
+    port: '5432'
+    proto: tcp
+    from_ip: 192.168.56.10
+
+- name: Activer le Firewall
+  community.general.ufw:
+    state: enabled
+    policy: deny
+    direction: incoming

@@ -1,0 +1,32 @@
+# Configuration pour le port 80 (HTTP) - Redirection automatique
+<VirtualHost *:80>
+    ServerName {{ item.server_name }}
+    DocumentRoot {{ item.document_root }}
+
+    # Redirige tout le trafic HTTP vers HTTPS (Durcissement de la sécurité)
+    Redirect permanent / https://{{ item.server_name }}/
+</VirtualHost>
+
+# Configuration pour le port 443 (HTTPS) - Trafic Chiffré
+<VirtualHost *:443>
+    ServerName {{ item.server_name }}
+    DocumentRoot {{ item.document_root }}
+
+    # Activation du moteur SSL
+    SSLEngine on
+
+    # Chemins vers les certificats générés par Ansible
+    # Note : item.name correspond au nom défini dans ta liste 'apache_sites'
+    SSLCertificateFile /etc/ssl/certs/{{ item.name }}-selfsigned.crt
+    SSLCertificateKeyFile /etc/ssl/private/{{ item.name }}.key
+
+    <Directory {{ item.document_root }}>
+        Options Indexes FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+
+    # Logs spécifiques pour le monitoring SSL
+    ErrorLog ${APACHE_LOG_DIR}/{{ item.name }}_error.log
+    CustomLog ${APACHE_LOG_DIR}/{{ item.name }}_access.log combined
+</VirtualHost>
