@@ -23,31 +23,66 @@
   community.postgresql.postgresql_user:
     name: "{{ item }}"
     role_attr_flags: "NOLOGIN"
+    state: present
   loop:
     - "db_analyst"
     - "db_developer"
 
-- name: 2. Créer les bases de données (Boucle Applications)
+- name: 2. Vérifier si les bases existent déjà (SANS modification)
   become: yes
   become_user: postgres
   community.postgresql.postgresql_db:
     name: "{{ item.name }}"
-    owner: "postgres"
+    state: present
   loop: "{{ applications }}"
+  register: db_check
+  changed_when: false
+  ignore_errors: yes
 
-- name: 3. Créer les comptes utilisateurs (LOGIN)
+- name: 3. Créer les bases UNIQUEMENT si elles n'existent pas
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_db:
+    name: "{{ item.item.name }}"
+    state: present
+  loop: "{{ db_check.results }}"
+  when: item.failed or item.db is not defined
+  loop_control:
+    label: "{{ item.item.name }}"
+
+- name: 4. Copier le fichier de schéma sur la VM2
+  copy:
+    src: "files/{{ item.item.schema_file }}"
+    dest: "/tmp/{{ item.item.schema_file }}"
+  loop: "{{ db_check.results }}"
+  when: (item.failed or item.db is not defined) and item.item.schema_file is defined
+  loop_control:
+    label: "{{ item.item.name }}"
+
+- name: 5. Importer le schéma UNIQUEMENT au premier déploiement
+  become: yes
+  become_user: postgres
+  shell: "psql -d {{ item.item.name }} -f /tmp/{{ item.item.schema_file }}"
+  loop: "{{ db_check.results }}"
+  when: (item.failed or item.db is not defined) and item.item.schema_file is defined
+  loop_control:
+    label: "{{ item.item.name }}"
+  notify: restart postgresql
+
+- name: 6. Créer les utilisateurs (LOGIN)
   become: yes
   become_user: postgres
   community.postgresql.postgresql_user:
     name: "{{ item.user }}"
     password: "{{ item.pass }}"
     role_attr_flags: "LOGIN"
+    state: present
   loop:
     - { user: "{{ analyst_user }}", pass: "{{ analyst_password }}" }
     - { user: "{{ developer_user }}", pass: "{{ developer_password }}" }
     - { user: "{{ applications[0].user }}", pass: "{{ applications[0].pass }}" }
 
-- name: 4. Lier les utilisateurs aux groupes de sécurité (Membership)
+- name: 7. Lier les utilisateurs aux groupes (Membership)
   become: yes
   become_user: postgres
   community.postgresql.postgresql_membership:
@@ -59,32 +94,16 @@
     - { user: "{{ developer_user }}", group: "db_developer" }
     - { user: "{{ applications[0].user }}", group: "db_developer" }
 
-
-- name: 4. Autoriser l'accès distant dans pg_hba.conf
+- name: 8. Autoriser l'accès distant (VM1 control-plane)
+  become: yes
+  become_user: postgres
   community.postgresql.postgresql_pg_hba:
     dest: "/etc/postgresql/{{ pg_version_installed.stdout }}/main/pg_hba.conf"
     contype: host
-    databases: "{{ item.0.name }}"
-    users: "{{ item.1 }}"
-    address: "{{ app_server_ip }}/32"
+    databases: "{{ item.name }}"
+    users: "{{ item.user }}"
+    source: "{{ app_server_ip }}/32"
     method: md5
-  loop: "{{ applications | product([applications[0].user, analyst_user, developer_user]) | list }}"
-  notify: restart postgresql
-
-- name: 5. Déployer les schémas SQL (Tables et Droits internes)
-  block:
-    - name: Copier les scripts SQL sur la VM2
-      ansible.builtin.copy:
-        src: "{{ item.schema_file }}"
-        dest: "/tmp/{{ item.schema_file }}"
-        owner: postgres
-        group: postgres
-        mode: '0644'
-      loop: "{{ applications }}"
-
-    - name: Exécuter les scripts SQL dans chaque base
-      shell: "psql -d {{ item.name }} -f /tmp/{{ item.schema_file }}"
-      become: yes
-      become_user: postgres
-      loop: "{{ applications }}"
+    create: true
+  loop: "{{ applications }}"
   notify: restart postgresql
