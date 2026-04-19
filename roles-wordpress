@@ -27,3 +27,6 @@
     mode: '0755'
     recurse: yes
   become: true
+
+--------------templates/wp-config.php.j2---------------
+
