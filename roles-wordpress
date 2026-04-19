@@ -1,1 +1,27 @@
-///
+- name: Créer le dossier de destination sur VM2
+  file:
+    path: /var/www/cms
+    state: directory
+      - "--exclude=infra"
+      - "--exclude=.git"
+      - "--exclude=ansible"
+  delegate_to: localhost
+  become: false
+
+- name: Configurer wp-config.php depuis le template
+  template:
+    src: wp-config.php.j2
+    dest: /var/www/cms/wp-config.php
+    owner: www-data
+    group: www-data
+    mode: '0640'
+  become: true
+
+- name: Fix final des permissions pour Apache
+  file:
+    path: /var/www/cms
+    owner: www-data
+    group: www-data
+    mode: '0755'
+    recurse: yes
+  become: true
