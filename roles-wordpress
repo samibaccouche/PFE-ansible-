@@ -1,3 +1,5 @@
+-----------------------tasks/main.yml----------------------------
+
 - name: Créer le dossier de destination sur VM2
   file:
     path: /var/www/cms
