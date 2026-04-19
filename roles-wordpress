@@ -29,4 +29,27 @@
   become: true
 
 --------------templates/wp-config.php.j2---------------
+<?php
+// Connexion PostgreSQL
+define('DB_NAME', '{{ applications[0].name }}');
+define('DB_USER', '{{ applications[0].user }}');
+define('DB_PASSWORD', '{{ applications[0].pass }}');
+define('DB_HOST', 'localhost');
+define('DB_CHARSET', 'utf8');
+define('DB_COLLATE', '');
+
+// Tables prefix
+$table_prefix = 'wp_';
+
+// Debug (désactivé en prod)
+define('WP_DEBUG', false);
+
+// Chemins absolus
+if ( ! defined('ABSPATH') ) {
+    define('ABSPATH', __DIR__ . '/');
+}
+
+require_once ABSPATH . 'wp-settings.php';
+?>
+
 
